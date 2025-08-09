@@ -1,5 +1,0 @@
-C:/c++/WKB/MapViewerNewData/build/MSYS2_Qt_5_15_17-Debug/CMakeFiles/MapViewerNewData.dir
-C:/c++/WKB/MapViewerNewData/build/MSYS2_Qt_5_15_17-Debug/CMakeFiles/edit_cache.dir
-C:/c++/WKB/MapViewerNewData/build/MSYS2_Qt_5_15_17-Debug/CMakeFiles/rebuild_cache.dir
-C:/c++/WKB/MapViewerNewData/build/MSYS2_Qt_5_15_17-Debug/CMakeFiles/MapViewerNewData_autogen_timestamp_deps.dir
-C:/c++/WKB/MapViewerNewData/build/MSYS2_Qt_5_15_17-Debug/CMakeFiles/MapViewerNewData_autogen.dir
