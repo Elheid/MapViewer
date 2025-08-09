@@ -1,0 +1,291 @@
+// ========== MapRenderer.h ==========
+#pragma once
+#include <QMatrix4x4>
+#include <QOpenGLBuffer>
+#include <QOpenGLShaderProgram>
+#include <QOpenGLVertexArrayObject>
+#include <vector>
+#include "Shape.h"
+#include "Bounds.h"
+
+class MapRenderer {
+public:
+    void initialize(QOpenGLShaderProgram* program, QOpenGLVertexArrayObject* vao, QOpenGLBuffer* vbo);
+    void renderMap(const QMatrix4x4& mvp, const Bounds& bounds,
+                   const std::vector<Shape>& shapes, const std::vector<std::string>& tagsToExclude,
+                   int detalization);
+    void drawGrid(const QMatrix4x4& projection, int width, int height);
+    void drawCross(const QMatrix4x4& projection, int width, int height);
+    void drawArrow(const QMatrix4x4& projection, float offsetX, float offsetY, int width, int height);
+
+private:
+    QOpenGLShaderProgram* shaderProgram;
+    QOpenGLVertexArrayObject* vao;
+    QOpenGLBuffer* vbo;
+};
+
+
+// ========== MapDataManager.h ==========
+#pragma once
+#include <vector>
+#include <QString>
+#include "Bounds.h"
+#include "Shape.h"
+#include "DataLoader.h"
+
+class MapDataManager {
+public:
+    MapDataManager(DataLoader* loader);
+    void setParams(const Bounds& bounds, float zoom, float offsetX, float offsetY, int detalization, const QString& dbFile);
+    void loadVisibleData();
+    const std::vector<Shape>& getVisibleShapes() const;
+
+private:
+    DataLoader* loader;
+    Bounds bounds;
+    float zoom = 1.0f;
+    float offsetX = 0.0f;
+    float offsetY = 0.0f;
+    int detalization = 12;
+    QString dbFilename;
+};
+
+
+// ========== ShaderManager.h ==========
+#pragma once
+#include <QOpenGLShaderProgram>
+
+class ShaderManager {
+public:
+    static bool loadDefaultShaders(QOpenGLShaderProgram& program);
+};
+
+
+// ========== GLBufferManager.h ==========
+#pragma once
+#include <QOpenGLBuffer>
+#include <QOpenGLVertexArrayObject>
+#include <QOpenGLShaderProgram>
+
+class GLBufferManager {
+public:
+    void initialize(QOpenGLVertexArrayObject& vao, QOpenGLBuffer& vbo, QOpenGLShaderProgram& program);
+};
+
+
+// ========== Shape.h ==========
+#pragma once
+#include <vector>
+#include <string>
+
+struct Shape {
+    std::vector<std::pair<double, double>> points;
+    std::map<std::string, std::string> tags;
+};
+
+
+// ========== Bounds.h ==========
+#pragma once
+
+struct Bounds {
+    double minlat;
+    double maxlat;
+    double minlon;
+    double maxlon;
+};
+
+
+// ========== MapRenderer.cpp ==========
+#include "MapRenderer.h"
+#include "util.h"
+#include "colorutils.h" // Файл с getColorForType, excudeTypes, и др.
+#include <QDebug>
+#include <QOpenGLFunctions>
+#include <cmath>
+
+void MapRenderer::initialize(QOpenGLShaderProgram* program, QOpenGLVertexArrayObject* vaoObj, QOpenGLBuffer* vboBuf) {
+    shaderProgram = program;
+    vao = vaoObj;
+    vbo = vboBuf;
+}
+
+void MapRenderer::renderMap(const QMatrix4x4& mvp, const Bounds& bounds,
+                            const std::vector<Shape>& shapes,
+                            const std::vector<std::string>& tagsToExclude,
+                            int detalization) {
+    shaderProgram->bind();
+    shaderProgram->setUniformValue("u_mvp", mvp);
+    vao->bind();
+
+    for (const auto& shape : shapes) {
+        if (excudeTypesByTag(shape.tags, tagsToExclude)) continue;
+        QVector4D color = getColorForType(shape.tags);
+        shaderProgram->setUniformValue("u_color", color);
+
+        std::vector<GLfloat> vertices;
+        for (const auto& [lon, lat] : shape.points) {
+            float x = linearScaling(lon, bounds.minlon, bounds.maxlon, -1, 1);
+            float y = linearScaling(lat, bounds.minlat, bounds.maxlat, -1, 1);
+            vertices.push_back(x);
+            vertices.push_back(y);
+        }
+
+        if (vertices.size() < 4) continue;
+
+        vbo->bind();
+        vbo->allocate(vertices.data(), vertices.size() * sizeof(GLfloat));
+
+        if (vertices.size() == 4) glDrawArrays(GL_LINES, 0, 2);
+        else glDrawArrays(GL_LINE_STRIP, 0, vertices.size() / 2);
+        vbo->release();
+    }
+
+    vao->release();
+    shaderProgram->release();
+}
+
+void MapRenderer::drawGrid(const QMatrix4x4& projection, int width, int height) {
+    std::vector<GLfloat> gridVertices;
+    for (int x = 0; x <= width; x += 100) {
+        gridVertices.push_back(x); gridVertices.push_back(0);
+        gridVertices.push_back(x); gridVertices.push_back(height);
+    }
+    for (int y = 0; y <= height; y += 100) {
+        gridVertices.push_back(0); gridVertices.push_back(y);
+        gridVertices.push_back(width); gridVertices.push_back(y);
+    }
+
+    shaderProgram->bind();
+    shaderProgram->setUniformValue("u_color", QVector4D(0.0f, 0.0f, 0.0f, 0.1f));
+    shaderProgram->setUniformValue("u_mvp", projection);
+
+    shaderProgram->enableAttributeArray("a_position");
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    shaderProgram->setAttributeArray("a_position", GL_FLOAT, gridVertices.data(), 2);
+
+    glDrawArrays(GL_LINES, 0, gridVertices.size() / 2);
+    shaderProgram->disableAttributeArray("a_position");
+    shaderProgram->release();
+}
+
+void MapRenderer::drawCross(const QMatrix4x4& projection, int width, int height) {
+    float cx = width / 2.0f;
+    float cy = height / 2.0f;
+    std::vector<GLfloat> vertices = {
+        cx - 10, cy, cx + 10, cy,
+        cx, cy - 10, cx, cy + 10
+    };
+
+    shaderProgram->bind();
+    shaderProgram->setUniformValue("u_color", QVector4D(1.0f, 0.0f, 0.0f, 1.0f));
+    shaderProgram->setUniformValue("u_mvp", projection);
+
+    shaderProgram->enableAttributeArray("a_position");
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    shaderProgram->setAttributeArray("a_position", GL_FLOAT, vertices.data(), 2);
+
+    glDrawArrays(GL_LINES, 0, vertices.size() / 2);
+    shaderProgram->disableAttributeArray("a_position");
+    shaderProgram->release();
+}
+
+void MapRenderer::drawArrow(const QMatrix4x4& projection, float offsetX, float offsetY, int width, int height) {
+    float cx = width / 2.0f;
+    float cy = height / 2.0f;
+    float dx = std::clamp(offsetX, -40.0f, 40.0f);
+    float dy = std::clamp(offsetY, -40.0f, 40.0f);
+
+    std::vector<GLfloat> vertices = {
+        cx, cy, cx + dx, cy + dy
+    };
+
+    shaderProgram->bind();
+    shaderProgram->setUniformValue("u_color", QVector4D(1.0f, 0.0f, 0.0f, 1.0f));
+    shaderProgram->setUniformValue("u_mvp", projection);
+
+    shaderProgram->enableAttributeArray("a_position");
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    shaderProgram->setAttributeArray("a_position", GL_FLOAT, vertices.data(), 2);
+
+    glDrawArrays(GL_LINES, 0, vertices.size() / 2);
+    shaderProgram->disableAttributeArray("a_position");
+    shaderProgram->release();
+}
+
+
+// ========== MapDataManager.cpp ==========
+#include "MapDataManager.h"
+#include "util.h"
+
+MapDataManager::MapDataManager(DataLoader* loaderPtr) : loader(loaderPtr) {}
+
+void MapDataManager::setParams(const Bounds& b, float z, float ox, float oy, int d, const QString& dbFile) {
+    bounds = b;
+    zoom = z;
+    offsetX = ox;
+    offsetY = oy;
+    detalization = d;
+    dbFilename = dbFile;
+}
+
+void MapDataManager::loadVisibleData() {
+    double delta = 0.1 / zoom;
+    double lon = linearScaling(offsetX, -500, 500, bounds.minlon, bounds.maxlon);
+    double lat = linearScaling(offsetY, -500, 500, bounds.minlat, bounds.maxlat);
+    
+    double lat1 = lat - delta;
+    double lat2 = lat + delta;
+    double lon1 = lon - delta;
+    double lon2 = lon + delta;
+
+    loader->shapesToDraw.clear();
+    loader->loadFromDatabaseWithTimer(dbFilename, lat1, lat2, lon1, lon2, detalization);
+}
+
+const std::vector<Shape>& MapDataManager::getVisibleShapes() const {
+    return loader->shapesToDraw;
+}
+
+
+// ========== ShaderManager.cpp ==========
+#include "ShaderManager.h"
+
+bool ShaderManager::loadDefaultShaders(QOpenGLShaderProgram& program) {
+    bool ok1 = program.addShaderFromSourceCode(QOpenGLShader::Vertex,
+        "attribute vec2 a_position;\n"
+        "uniform mat4 u_mvp;\n"
+        "void main() {\n"
+        "  gl_Position = u_mvp * vec4(a_position, 0.0, 1.0);\n"
+        "  gl_PointSize = 10.0;\n"
+        "}");
+
+    bool ok2 = program.addShaderFromSourceCode(QOpenGLShader::Fragment,
+        "uniform vec4 u_color;\n"
+        "void main() {\n"
+        "  gl_FragColor = u_color;\n"
+        "}");
+
+    return ok1 && ok2 && program.link();
+}
+
+
+// ========== GLBufferManager.cpp ==========
+#include "GLBufferManager.h"
+
+void GLBufferManager::initialize(QOpenGLVertexArrayObject& vao, QOpenGLBuffer& vbo, QOpenGLShaderProgram& program) {
+    vao.create();
+    vao.bind();
+
+    vbo = QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    vbo.create();
+    vbo.bind();
+    vbo.setUsagePattern(QOpenGLBuffer::DynamicDraw);
+
+    program.bind();
+    program.enableAttributeArray("a_position");
+    program.setAttributeBuffer("a_position", GL_FLOAT, 0, 2);
+
+    vbo.release();
+    vao.release();
+    program.release();
+}

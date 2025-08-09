@@ -1,0 +1,6 @@
+[2025-07-24 11:13:36.467] Query: BBOX(56.2955,56.4955,61.942,62.142), Zoom: 12, Rows: 7296, SQL Time: 150ms, Total Time: 153ms
+[2025-07-24 11:13:37.725] Query: BBOX(56.2955,56.4955,61.9527,62.1527), Zoom: 12, Rows: 5624, SQL Time: 133ms, Total Time: 138ms
+[2025-07-24 11:13:38.080] Query: BBOX(56.2955,56.4955,61.9633,62.1633), Zoom: 12, Rows: 4613, SQL Time: 128ms, Total Time: 133ms
+[2025-07-24 11:13:38.463] Query: BBOX(56.2955,56.4955,61.974,62.174), Zoom: 12, Rows: 3460, SQL Time: 162ms, Total Time: 177ms
+[2025-07-24 11:13:38.758] Query: BBOX(56.2955,56.4955,61.9847,62.1847), Zoom: 12, Rows: 2616, SQL Time: 123ms, Total Time: 136ms
+[2025-07-24 11:13:39.253] Query: BBOX(56.2955,56.4955,61.9953,62.1954), Zoom: 12, Rows: 2229, SQL Time: 156ms, Total Time: 169ms
