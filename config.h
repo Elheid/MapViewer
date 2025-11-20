@@ -17,7 +17,7 @@
 //constexpr const char* filename = "/home/zvarich/Projects/komarovSource/MapViewerWithShaders/kamenskWithEkb.osm";
 
 //outputNewEpsilon2.sqlite //outputShorter
-constexpr const char* dbFilename = "C:\\c++\\WKB\\MapViewerNewData\\database\\outputWKB.sqlite";
+constexpr const char* dbFilename = "C:\\c++\\WKB\\MapViewerNewData\\database\\outputWKB_win10v2.sqlite";
 //"/home/zvarich/Projects/komarovSource/MapViewerTiles/WKB/MapViewerNewData/database/outputWKB.sqlite";
 constexpr const char* filename = "C:\\c++\\WKB\\MapViewerNewData\\kamensk.osm";
 //"/home/zvarich/Projects/komarovSource/MapViewerTiles/WKB/MapViewerNewData/kamensk.osm";

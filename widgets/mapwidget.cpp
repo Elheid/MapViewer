@@ -1,3 +1,524 @@
+// MapWidget.cpp
+
+
+
+// float valueOfMove = 4.0f; // макс 2 мин 4+-1? умножать на zoomNum чтобы уменьшаться при близком зуме
+// const double tileSize = 0.1;
+
+// const float gridStep = 100.0f;
+
+// const std::map<std::string, std::string> unnecesaryTags = {
+//     {"barrier","fence"},
+//     {"service","parking_aisle"},
+//     {"highway","service"},
+//     {"building","garage"},
+//     {"public_transport","platform"},
+//     {"power","line"},
+//     {"amenity","parking"},
+//     };
+
+// void MapWidget::keyPressEvent(QKeyEvent *event){
+//     //qDebug()<< event->key();
+//     //rotationViewAngle+=10;
+//     /*if (event->key() == Qt::Key_Q){
+//         rotationViewAngle-=10;
+//     }
+//     if (event->key() == Qt::Key_E){
+//         rotationViewAngle+=10;
+//     }*/
+//     int movement = valueOfMove + 8;
+//     switch(event->key()){
+//         case Qt::Key_Q:
+//             rotationViewAngle-=10;
+//             update();
+//             break;
+//         case Qt::Key_E:
+//             rotationViewAngle+=10;
+//             update();
+//             break;
+
+
+//         case Qt::Key_W:
+//             //offsetY-=movement;
+//             offsetChange(AxisY, -1* movement, true);
+//             break;
+//         case Qt::Key_S:
+//              offsetChange(AxisY, movement, true);
+//              //offsetY+=movement;
+//             break;
+//         case Qt::Key_A:
+//              offsetChange(AxisX, -1* movement, true);
+//              //offsetX-=movement;
+//             break;
+//         case Qt::Key_D:
+//             offsetChange(AxisX, movement, true);
+//             //offsetX+=movement;
+//             break;
+//     }
+//     //qDebug() << rotationViewAngle << "= turn angle ";
+//     //update();
+// }
+
+// void MapWidget::changeDetalization(int newDetalization){
+//     const int maxDetailed = 14;
+//     const int minDetailed = 10;
+//     int result = std::clamp(newDetalization, minDetailed, maxDetailed);
+//     qDebug() << "detalization " << result;
+
+
+//     loadVisibleNodes();
+//     update();
+
+//     detalization = result;
+// }
+
+// void MapWidget::increaseDetalization(){
+//     changeDetalization(detalization + 1);
+// }
+// void MapWidget::decreaseDetalization(){
+//     changeDetalization(detalization - 1);
+// }
+
+// void MapWidget::resetPosition(){
+//     offsetX = initOffsetX;
+//     offsetY = initOffsetY;
+//     loadVisibleNodes();
+//     update();
+// }
+// void MapWidget::resetRotation(){
+//     rotationViewAngle = 0;
+
+// }
+
+// // -----------------------------
+// // Вспомогательные структуры
+// // -----------------------------
+// struct DrawRange {
+//     int startVertex;   // индекс вершины (каждая вершина = 1 точка = 2 float)
+//     int vertexCount;   // количество вершин
+//     QVector4D color;
+// };
+
+// // -----------------------------
+// // Конструктор
+// // -----------------------------
+// MapWidget::MapWidget(QWidget *parent)
+//     : QOpenGLWidget(parent)
+// {
+//     dataLoader = new DataLoader();
+
+//     bounds.minlat = 56.171;
+//     bounds.maxlat = 56.62;
+//     bounds.minlon = 61.4;
+//     bounds.maxlon = 62.684;
+
+//     // Инициализируем параметры
+//     zoomNum = 1.0f;
+//     offsetX = 0.0f;
+//     offsetY = 0.0f;
+//     detalization = 12;
+//     vboNeedsUpdate = true;
+
+//     // Прогрузка начальных нод
+//     loadVisibleNodes();
+// }
+
+// // -----------------------------
+// // initializeGL — вызывается один раз
+// // -----------------------------
+// void MapWidget::initializeGL() {
+//     initializeOpenGLFunctions();
+
+//     // --- Шейдеры ---
+//     shaderProgramm.addShaderFromSourceCode(QOpenGLShader::Vertex,
+//                                            "attribute vec2 a_position;\n"
+//                                            "uniform mat4 u_mvp;\n"
+//                                            "void main() {\n"
+//                                            "  gl_Position = u_mvp * vec4(a_position, 0.0, 1.0);\n"
+//                                            "  gl_PointSize = 6.0;\n"
+//                                            "}");
+//     shaderProgramm.addShaderFromSourceCode(QOpenGLShader::Fragment,
+//                                            "uniform vec4 u_color;\n"
+//                                            "void main() {\n"
+//                                            "  gl_FragColor = u_color;\n"
+//                                            "}");
+//     if (!shaderProgramm.link()) {
+//         qWarning() << "Shader link failed:" << shaderProgramm.log();
+//     }
+
+//     // --- Создание VAO и VBO (один раз) ---
+//     vao.create();
+//     vao.bind();
+
+//     vboData = QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+//     vboData.create();
+//     vboData.bind();
+//     vboData.setUsagePattern(QOpenGLBuffer::DynamicDraw); // DynamicDraw — интерактивный рендер
+
+//     // Установим layout атрибута (a_position). Делать это при bind VAO и VBO
+//     shaderProgramm.bind();
+//     shaderProgramm.enableAttributeArray("a_position");
+//     // offsetBytes = 0, tupleSize = 2 (x,y). Qt возьмет шаг по умолчанию, т.к. у нас tightly packed.
+//     shaderProgramm.setAttributeBuffer("a_position", GL_FLOAT, 0, 2);
+
+//     // Отвязка
+//     vboData.release();
+//     vao.release();
+//     shaderProgramm.release();
+
+//     qDebug() << "initializeGL done";
+// }
+
+// // -----------------------------
+// // resizeGL
+// // -----------------------------
+// void MapWidget::resizeGL(int w, int h) {
+//     glViewport(0, 0, w, h);
+// }
+
+// // -----------------------------
+// // paintGL — собираем MVP и рендерим
+// // -----------------------------
+
+// void MapWidget::drawGrid(const QMatrix4x4 &projection){
+//     //float lonSize = bounds.maxlon - bounds.minlon;
+//     //float latSize = bounds.maxlat - bounds.minlat;
+
+//     //float gridStep = 100.0f;//gcd(width(), height());//100.0f;
+
+//     //qDebug() << gcd(lonSize, latSize) * 1000.0f << " gcd(lonSize, latSize) * 1000.0f ";
+
+//     //size - gcd between min max, for lon and lat?
+
+//     std::vector<GLfloat> gridVertices;
+//     //qDebug() << visibleNodes.size();
+//      //нижняя граница
+//      gridVertices.push_back(0);
+//      gridVertices.push_back(height());
+//      gridVertices.push_back(width());
+//      gridVertices.push_back(height());
+//      //правая граница
+//      gridVertices.push_back(width());
+//      gridVertices.push_back(0);
+//      gridVertices.push_back(width());
+//      gridVertices.push_back(height());
+
+//     for(int x = 0; x <= width(); x+=gridStep) {
+//         gridVertices.push_back(x);
+//         gridVertices.push_back(0);
+//         gridVertices.push_back(x);
+//         gridVertices.push_back(height());
+//     }
+
+//     for(int y = 0; y <= height(); y+=gridStep) {
+//         gridVertices.push_back(0);
+//         gridVertices.push_back(y);
+//         gridVertices.push_back(width());
+//         gridVertices.push_back(y);
+//     }
+
+
+//     shaderProgramm.bind();
+//     shaderProgramm.setUniformValue("u_color", QVector4D(0.0f, 0.0f, 0.0f, 0.0f));
+//     shaderProgramm.setUniformValue("u_mvp", projection);
+
+//     shaderProgramm.enableAttributeArray("a_position");
+//     glBindBuffer(GL_ARRAY_BUFFER, 0);
+//     shaderProgramm.setAttributeArray("a_position", GL_FLOAT, gridVertices.data(), 2);
+
+//     glDrawArrays(GL_LINES, 0, gridVertices.size()/2);
+//     shaderProgramm.disableAttributeArray("a_position");
+
+// }
+
+// void MapWidget::drawCross(const QMatrix4x4 &projection){
+//     float centerX = width()/2.0f;
+//     float centerY = height()/2.0f;
+//     std::vector<GLfloat> crossVertices;
+//     //qDebug() << visibleNodes.size();
+
+//     crossVertices.push_back(centerX-10);
+//     crossVertices.push_back(centerY);
+//     crossVertices.push_back(centerX+10);
+//     crossVertices.push_back(centerY);
+
+//     crossVertices.push_back(centerX);
+//     crossVertices.push_back(centerY-10);
+
+//     crossVertices.push_back(centerX);
+//     crossVertices.push_back(centerY+10);
+
+//    // glColor3f(1.0f, 0.0f, 0.0f);//лучше менять цвет по другому
+//     //glUniform4f(shaderProgramm.uniformLocation("u_color"), 1.0f, 0.0f, 0.0f, 1.0f);
+
+//     shaderProgramm.bind();
+//     shaderProgramm.setUniformValue("u_color", QVector4D(1.0f, 0.0f, 0.0f, 0.0f));
+//     shaderProgramm.setUniformValue("u_mvp", projection);
+
+//     shaderProgramm.enableAttributeArray("a_position");
+//     glBindBuffer(GL_ARRAY_BUFFER, 0);
+//     shaderProgramm.setAttributeArray("a_position", GL_FLOAT, crossVertices.data(), 2);
+
+//     glDrawArrays(GL_LINES, 0, crossVertices.size()/2);
+
+//     shaderProgramm.disableAttributeArray("a_position");
+// }
+
+// void MapWidget::drawArrow(const QMatrix4x4 &projection){
+//     float centerX = width()/2.0f;
+//     float centerY = height()/2.0f;
+//     std::vector<GLfloat> arrowVertices;
+//     //qDebug() << visibleNodes.size();
+//     float min = -40.0f;
+//     float max = 40.0f;
+
+//     float normMouseX = centerX + std::clamp(offsetX, min, max); //linearScaling(mousePosition.x(), -1 * abs(mousePosition.x()-centerX), abs(mousePosition.x()-centerX), 0, 1);
+//     float normMouseY = centerY + std::clamp(offsetY, min, max);//linearScaling(mousePosition.y(), -1 * abs(mousePosition.y()-centerY), abs(mousePosition.y()-centerY), 0, 1);
+
+//     changeVectorOfInterest(centerX, centerY, normMouseX, normMouseY);
+
+//     arrowVertices.push_back(centerX);
+//     arrowVertices.push_back(centerY);
+
+//     arrowVertices.push_back(normMouseX);
+//     arrowVertices.push_back(normMouseY);
+
+
+//     //glColor3f(1.0f, 0.0f, 0.0f);//лучше менять цвет по другому через шейдер, только починить бы его
+//     //shaderProgramm.setUniformValue("u_color", QVector4D(1.0f, 0.0f, 0.0f, 0.0f));
+
+//     shaderProgramm.bind();
+//     shaderProgramm.setUniformValue("u_mvp", projection);
+
+//     shaderProgramm.setUniformValue("u_color", QVector4D(1.0f, 0.0f, 0.0f, 0.0f));
+
+
+//     shaderProgramm.enableAttributeArray("a_position");
+//     glBindBuffer(GL_ARRAY_BUFFER, 0);
+//     shaderProgramm.setAttributeArray("a_position", GL_FLOAT, arrowVertices.data(), 2);
+
+//     glDrawArrays(GL_LINES, 0, arrowVertices.size()/2);
+//     shaderProgramm.disableAttributeArray("a_position");
+
+//     //glColor3f(0.0f, 0.0f, 0.0f);//лучше менять цвет по другому
+// }
+
+
+// void MapWidget::paintGL() {
+//     glClearColor(0.95f, 0.95f, 0.95f, 1.0f);
+//     glClear(GL_COLOR_BUFFER_BIT);
+
+//     // Проекция в пикселях: (0..width, 0..height) с origin в левом верхнем углу
+//     QMatrix4x4 projection;
+//     projection.ortho(0.0f, (float)width(), (float)height(), 0.0f, -1.0f, 1.0f);
+
+//     // view — центрируем, масштабируем, поворачиваем, и применяем смещение offsetX/Y (в пикселях)
+//     QMatrix4x4 view;
+//     view.translate((float)width() / 2.0f + (float)offsetX, (float)height() / 2.0f + (float)offsetY);
+//     view.scale(zoomNum);
+//     view.rotate(rotationViewAngle, 0.0f, 0.0f, 1.0f);
+//     view.translate(-(float)width() / 2.0f, -(float)height() / 2.0f);
+
+//     QMatrix4x4 mvp = projection * view;
+
+//     // Если данные устарели — перезагрузим
+//     if (vboNeedsUpdate) {
+//         loadVisibleNodes();
+//         vboNeedsUpdate = false;
+//     }
+
+//     // paintData ожидает экранные границы в пикселях (minX, maxX, minY, maxY)
+//     paintData(mvp, 0.0, (double)width(), 0.0, (double)height());
+
+//     // Вызовы остальных примитивов (если хочешь — их можно тоже оптимизировать)
+//     drawGrid(mvp);
+//     drawArrow(projection);
+//     drawCross(projection);
+// }
+
+// // -----------------------------
+// // Обработчики ввода (mouse, wheel) — использую твой код почти без изменений
+// // -----------------------------
+// void MapWidget::mousePressEvent(QMouseEvent *event) {
+//     lastMousePosition = event->pos();
+// }
+
+// // void MapWidget::mouseMoveEvent(QMouseEvent *event){
+
+
+// //     //vboNeedsUpdate = true;
+// //     //loadVisibleNodes();
+
+// //     mousePosition = event -> pos();
+// //     QPoint delta = mousePosition - lastMousePosition;
+
+// //     //offsetX += (delta.x())/ valueOfMove;
+// //     //offsetY += (delta.y())/ valueOfMove;
+// //     offsetChange(AxisX, (delta.x())/ valueOfMove, false);
+// //     offsetChange(AxisY, (delta.y())/ valueOfMove);
+// //     lastMousePosition = event->pos();
+// //     //update();
+// // }
+
+// void MapWidget::mouseMoveEvent(QMouseEvent *event) {
+//     QPoint mousePosition = event->pos();
+//     QPoint delta = mousePosition - lastMousePosition;
+
+//     offsetChange(AxisX, (delta.x())/ valueOfMove, false);
+//     offsetChange(AxisY, (delta.y())/ valueOfMove, true);
+
+//     lastMousePosition = event->pos();
+// }
+
+// void MapWidget::wheelEvent(QWheelEvent *event) {
+//     QPoint angle = event->angleDelta();
+//     if (angle.y() > 0) zoomIn();
+//     else zoomOut();
+
+//     // Обновляем детализацию по текущему zoomNum
+//     if (zoomNum < 0.5f) changeDetalization(10);
+//     else if (zoomNum < 1.0f) changeDetalization(11);
+//     else if (zoomNum < 1.5f) changeDetalization(12);
+//     else if (zoomNum < 2.0f) changeDetalization(13);
+//     else changeDetalization(14);
+
+//     event->accept();
+//     update();
+// }
+
+// void MapWidget::zoomIn() {
+//     zoomNum = std::min(zoomNum * 1.1f, 8.0f);
+// }
+
+// void MapWidget::zoomOut() {
+//     zoomNum = std::max(zoomNum / 1.1f, 0.5f);
+// }
+
+// // -----------------------------
+// // offsetChange — смещение и (опционально) перезагрузка данных
+// // -----------------------------
+// void MapWidget::offsetChange(Axis axis,float shift, bool load = true){
+//     if (axis == AxisX) offsetX += shift;
+//     else if (axis == AxisY) offsetY += shift;
+//     else {
+//         qDebug() << "wrong axis name in offset change";
+//         return;
+//     }
+
+//     if (load) {
+//         vboNeedsUpdate = true;
+//         loadVisibleNodes();
+//     }
+// }
+
+// // -----------------------------
+// // loadVisibleNodes — исправленный: центр = экранный центр + offset (в пикселях) → lon/lat
+// // -----------------------------
+// void MapWidget::loadVisibleNodes() {
+//     vboNeedsUpdate = false;
+
+//     // delta — приблизительный "половинный радиус" в градусах (настроить tileSize и scale при необходимости)
+//     double delta = tileSize / zoomNum;
+
+//     // экранный центр в пикселях + offset
+//     double screenCenterX = (double)width() / 2.0 + offsetX;
+//     double screenCenterY = (double)height() / 2.0 + offsetY;
+
+//     // переводим экранные координаты в lon/lat (linearScaling ожидает: value, fromMin, fromMax, toMin, toMax)
+//     double centerLon = linearScaling(screenCenterX, 0.0, (double)width(), bounds.minlon, bounds.maxlon);
+//     double centerLat = linearScaling(screenCenterY, 0.0, (double)height(), bounds.minlat, bounds.maxlat);
+
+//     double lat1 = centerLat - delta;
+//     double lat2 = centerLat + delta;
+//     double lon1 = centerLon - delta;
+//     double lon2 = centerLon + delta;
+
+//     // Запрос в БД
+//     dataLoader->shapesToDraw.clear();
+//     dataLoader->loadFromDatabase(dbFilename, lat1, lat2, lon1, lon2, detalization);
+
+//     // Пометить, что VBO нужно обновить
+//     vboNeedsUpdate = true;
+//     update();
+// }
+
+// // -----------------------------
+// // paintData — новый батч-рендер: один VBO, несколько DrawRanges
+// // -----------------------------
+// void MapWidget::paintData(const QMatrix4x4 &mvp, double minX, double maxX, double minY, double maxY) {
+//     shaderProgramm.bind();
+//     shaderProgramm.setUniformValue("u_mvp", mvp);
+
+//     // Собираем батч
+//     std::vector<GLfloat> batchVerts;
+//     std::vector<DrawRange> ranges;
+
+//     batchVerts.reserve(20000); // на твоё усмотрение
+
+//     for (const auto &shapeToDraw : dataLoader->shapesToDraw) {
+//         if (excudeTypesByTag(shapeToDraw.tags, tagsToExclude)) continue;
+//         if (excudeTypes(shapeToDraw.tags, unnecesaryTags)) continue;
+
+//         auto length = calcLength(shapeToDraw.points);
+//         if (length < 0.000005 && detalization >= 13 && length != 0) continue;
+
+//         int startIdx = (int)batchVerts.size() / 2;
+//         for (const auto &pt : shapeToDraw.points) {
+//             // Твои данные: pt.first = lon, pt.second = lat
+//             double lon = pt.first;
+//             double lat = pt.second;
+
+//             // Перевод в экранные пиксели (0..width, 0..height)
+//             float x = (float)linearScaling(lon, bounds.minlon, bounds.maxlon, minX, maxX);
+//             float y = (float)linearScaling(lat, bounds.minlat, bounds.maxlat, minY, maxY);
+
+//             batchVerts.push_back(x);
+//             batchVerts.push_back(y);
+//         }
+//         int count = (int)(batchVerts.size() / 2) - startIdx;
+//         if (count <= 0) continue;
+
+//         DrawRange r;
+//         r.startVertex = startIdx;
+//         r.vertexCount = count;
+//         r.color = getColorForType(shapeToDraw.tags);
+//         ranges.push_back(r);
+//     }
+
+//     if (batchVerts.empty()) {
+//         shaderProgramm.release();
+//         return;
+//     }
+
+//     // Заливаем в VBO один раз за кадр
+//     vao.bind();
+//     vboData.bind();
+//     vboData.allocate(batchVerts.data(), (int)(batchVerts.size() * sizeof(GLfloat)));
+
+//     // Отрисовка по диапазонам
+//     for (const auto &r : ranges) {
+//         shaderProgramm.setUniformValue("u_color", r.color);
+
+//         if (r.vertexCount == 1) {
+//             glDrawArrays(GL_POINTS, r.startVertex, 1);
+//         } else if (r.vertexCount == 2) {
+//             glDrawArrays(GL_LINES, r.startVertex, 2);
+//         } else {
+//             glDrawArrays(GL_LINE_STRIP, r.startVertex, r.vertexCount);
+//         }
+//     }
+
+//     vboData.release();
+//     vao.release();
+//     shaderProgramm.release();
+// }
+
+
+// // -----------------------------
+// // Конец файла
+// // -----------------------------
+
+
 #include <QOpenGLShaderProgram>
 #include <QMatrix4x4>
 #include <QTimer>
@@ -30,6 +551,8 @@
 #include <QFutureWatcher>
 //#include <QtConcurrent/QtConcurrent>
 #include <QtConcurrentRun>
+
+QTimer *reloadTimer;
 
 GLuint vbo = 0;
 float valueOfMove = 4.0f; // макс 2 мин 4+-1? умножать на zoomNum чтобы уменьшаться при близком зуме
@@ -77,6 +600,11 @@ MapWidget::MapWidget(QWidget *parent)
 
     //drawManager->loadVisibleNodes(zoomNum, detalization, width(), height(), tileSize, offsetX, offsetY);
     loadVisibleNodes();
+
+    reloadTimer = new QTimer(this);
+    reloadTimer->setSingleShot(true);
+    connect(reloadTimer, &QTimer::timeout, this, &MapWidget::loadVisibleNodes);
+
 }
 
 void MapWidget::initializeGL() {
@@ -198,9 +726,11 @@ void MapWidget::offsetChange(Axis axis,float shift, bool load = true){
         //loadVisibleNodes();
         //drawManager->vboNeedsUpdate=true;
         //drawManager->loadVisibleNodes(zoomNum, detalization, width(), height(), tileSize, offsetX, offsetY);
+        //reloadTimer->start(5);
         vboNeedsUpdate = true;
         loadVisibleNodes();
     }
+    update();
 }
 
 void MapWidget::mousePressEvent(QMouseEvent *event){
@@ -622,5 +1152,3 @@ void MapWidget::drawLoadingArea(const QMatrix4x4 &projection){
     shaderProgramm.disableAttributeArray("a_position");
 }
 */
-
-

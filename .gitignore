@@ -80,4 +80,5 @@ CMakeLists.txt.user*
 .rcc/
 .uic/
 /build*/
-database/*.sqlite
+database/*.sqlitebuild/*.osm.xz
+*.user.d4d2d94*.txt.user
